@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SkillCraft Technology — Stopwatch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b0d14;
+    --surface:#12151f;
+    --surface-2:#171b28;
+    --border:#232838;
+    --border-soft:#1b1f2c;
+    --teal:#22d3af;
+    --teal-dim:#0f6e56;
+    --blue:#3b82f6;
+    --amber:#f5b942;
+    --red:#e2534a;
+    --text:#f2f3f7;
+    --text-mute:#8b93a8;
+    --text-faint:#565e73;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    background:var(--bg);color:var(--text);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+    display:flex;align-items:center;justify-content:center;
+    padding:32px 20px;
+    position:relative;
+    overflow-x:hidden;
+  }
+  .bg-grid{
+    position:fixed;inset:0;z-index:0;pointer-events:none;
+    background-image:
+      linear-gradient(var(--border-soft) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border-soft) 1px, transparent 1px);
+    background-size:64px 64px;
+    mask-image:radial-gradient(ellipse 70% 60% at 50% 30%, black 30%, transparent 85%);
+    opacity:0.5;
+  }
+  .mono{font-family:'JetBrains Mono',monospace;}
+
+  .app{
+    position:relative;z-index:1;
+    width:100%;max-width:460px;
+  }
+  .eyebrow{
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--teal);
+    margin-bottom:28px;
+  }
+  .eyebrow::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--teal);box-shadow:0 0 8px 1px rgba(34,211,175,0.6);}
+
+  .panel{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:18px;
+    padding:40px 32px 32px;
+  }
+
+  /* dial */
+  .dial-wrap{
+    position:relative;
+    width:260px;height:260px;
+    margin:0 auto 30px;
+  }
+  .dial-wrap svg{width:100%;height:100%;transform:rotate(-90deg);}
+  .dial-track{fill:none;stroke:var(--border);stroke-width:4;}
+  .dial-progress{
+    fill:none;stroke:var(--teal);stroke-width:4;stroke-linecap:round;
+    stroke-dasharray:754;
+    stroke-dashoffset:754;
+    transition:stroke .3s ease;
+  }
+  .dial-progress.paused{stroke:var(--amber);}
+  .dial-center{
+    position:absolute;inset:0;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:6px;
+  }
+  .time{
+    font-family:'Space Grotesk',sans-serif;font-weight:700;
+    font-size:44px;letter-spacing:-0.02em;
+    font-variant-numeric:tabular-nums;
+  }
+  .time .ms{font-size:20px;color:var(--text-mute);}
+  .state-label{
+    font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;
+    text-transform:uppercase;color:var(--text-faint);
+  }
+  .state-label.running{color:var(--teal);}
+  .state-label.paused{color:var(--amber);}
+
+  /* controls */
+  .controls{
+    display:flex;justify-content:center;gap:12px;
+    margin-bottom:28px;
+  }
+  .btn{
+    flex:1;max-width:130px;
+    padding:14px 0;
+    border-radius:9px;
+    border:1px solid var(--border);
+    background:var(--surface-2);
+    color:var(--text);
+    font-size:14px;font-weight:600;
+    cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    transition:transform .15s ease, background .2s ease, border-color .2s ease, opacity .2s ease;
+  }
+  .btn:active{transform:scale(0.96);}
+  .btn:disabled{opacity:0.4;cursor:not-allowed;}
+  .btn:disabled:active{transform:none;}
+  .btn-start{background:var(--teal);border-color:var(--teal);color:#04201a;}
+  .btn-start:hover:not(:disabled){background:#3ee2bc;}
+  .btn-lap:hover:not(:disabled){border-color:var(--blue);}
+  .btn-reset:hover:not(:disabled){border-color:var(--red);}
+  .btn svg{width:14px;height:14px;}
+
+  /* laps */
+  .laps-head{
+    display:flex;justify-content:space-between;align-items:center;
+    padding-bottom:10px;border-bottom:1px solid var(--border-soft);
+    margin-bottom:4px;
+  }
+  .laps-head span{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-faint);text-transform:uppercase;letter-spacing:0.06em;}
+  .laps-list{
+    max-height:220px;overflow-y:auto;
+    display:flex;flex-direction:column-reverse;
+  }
+  .laps-list::-webkit-scrollbar{width:6px;}
+  .laps-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+  .lap-row{
+    display:grid;grid-template-columns:70px 1fr 90px;
+    align-items:center;gap:10px;
+    padding:12px 4px;
+    border-bottom:1px solid var(--border-soft);
+    font-size:13px;
+    animation:lapIn .25s ease;
+  }
+  @keyframes lapIn{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}
+  .lap-row .lap-num{font-family:'JetBrains Mono',monospace;color:var(--text-faint);}
+  .lap-row .lap-bar-wrap{height:4px;background:var(--border-soft);border-radius:2px;overflow:hidden;}
+  .lap-row .lap-bar{height:100%;background:var(--blue);border-radius:2px;}
+  .lap-row.fastest .lap-bar{background:var(--teal);}
+  .lap-row.slowest .lap-bar{background:var(--red);}
+  .lap-row .lap-time{font-family:'JetBrains Mono',monospace;text-align:right;font-variant-numeric:tabular-nums;}
+  .lap-row.fastest .lap-time{color:var(--teal);}
+  .lap-row.slowest .lap-time{color:var(--red);}
+
+  .empty-laps{
+    text-align:center;padding:24px 0;
+    color:var(--text-faint);font-size:13px;
+  }
+
+  @media (max-width:420px){
+    .panel{padding:32px 20px 24px;}
+    .dial-wrap{width:220px;height:220px;}
+    .time{font-size:36px;}
+    .btn{font-size:13px;padding:12px 0;}
+  }
+</style>
+</head>
+<body>
+<div class="bg-grid"></div>
+
+<div class="app">
+  <div class="eyebrow">SkillCraft Technology / stopwatch</div>
+
+  <div class="panel">
+    <div class="dial-wrap">
+      <svg viewBox="0 0 260 260">
+        <circle class="dial-track" cx="130" cy="130" r="120"></circle>
+        <circle class="dial-progress" id="dialProgress" cx="130" cy="130" r="120"></circle>
+      </svg>
+      <div class="dial-center">
+        <div class="time" id="timeDisplay">00:00<span class="ms">.00</span></div>
+        <div class="state-label" id="stateLabel">Ready</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="btn btn-start" id="startBtn">
+        <svg viewBox="0 0 24 24" fill="currentColor" id="startIcon"><path d="M8 5v14l11-7z"/></svg>
+        <span id="startLabel">Start</span>
+      </button>
+      <button class="btn btn-lap" id="lapBtn" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20v-6M12 4v4M5 10h14"/></svg>
+        Lap
+      </button>
+      <button class="btn btn-reset" id="resetBtn" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 1 3 6.7M3 12v6h6"/></svg>
+        Reset
+      </button>
+    </div>
+
+    <div class="laps-head">
+      <span>Laps</span>
+      <span id="lapCount">0</span>
+    </div>
+    <div class="laps-list" id="lapsList">
+      <div class="empty-laps" id="emptyLaps">No laps recorded yet</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const startBtn = document.getElementById('startBtn');
+  const startIcon = document.getElementById('startIcon');
+  const startLabel = document.getElementById('startLabel');
+  const lapBtn = document.getElementById('lapBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const timeDisplay = document.getElementById('timeDisplay');
+  const stateLabel = document.getElementById('stateLabel');
+  const dialProgress = document.getElementById('dialProgress');
+  const lapsList = document.getElementById('lapsList');
+  const emptyLaps = document.getElementById('emptyLaps');
+  const lapCount = document.getElementById('lapCount');
+
+  const CIRCUMFERENCE = 2 * Math.PI * 120;
+  dialProgress.style.strokeDasharray = CIRCUMFERENCE;
+
+  let elapsed = 0;
+  let startTimestamp = null;
+  let rafId = null;
+  let running = false;
+  let laps = [];
+  let lastLapTime = 0;
+
+  function pad(n, len){ return String(n).padStart(len, '0'); }
+
+  function formatTime(ms, withCentis){
+    const totalCentis = Math.floor(ms / 10);
+    const centis = totalCentis % 100;
+    const totalSeconds = Math.floor(ms / 1000);
+    const seconds = totalSeconds % 60;
+    const minutes = Math.floor(totalSeconds / 60) % 60;
+    const hours = Math.floor(totalSeconds / 3600);
+    const main = hours > 0 ? `${pad(hours,2)}:${pad(minutes,2)}:${pad(seconds,2)}` : `${pad(minutes,2)}:${pad(seconds,2)}`;
+    return withCentis ? { main, centis: pad(centis,2) } : main;
+  }
+
+  function render(){
+    const { main, centis } = formatTime(elapsed, true);
+    timeDisplay.innerHTML = `${main}<span class="ms">.${centis}</span>`;
+    const progress = (elapsed % 60000) / 60000;
+    dialProgress.style.strokeDashoffset = CIRCUMFERENCE * (1 - progress);
+  }
+
+  function tick(){
+    elapsed = performance.now() - startTimestamp;
+    render();
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function start(){
+    running = true;
+    startTimestamp = performance.now() - elapsed;
+    rafId = requestAnimationFrame(tick);
+
+    startIcon.innerHTML = '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>';
+    startLabel.textContent = 'Pause';
+    startBtn.classList.remove('btn-start');
+    startBtn.style.background = 'var(--amber)';
+    startBtn.style.borderColor = 'var(--amber)';
+    startBtn.style.color = '#3a2503';
+
+    stateLabel.textContent = 'Running';
+    stateLabel.className = 'state-label running';
+    dialProgress.classList.remove('paused');
+
+    lapBtn.disabled = false;
+    resetBtn.disabled = false;
+  }
+
+  function pause(){
+    running = false;
+    cancelAnimationFrame(rafId);
+
+    startIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
+    startLabel.textContent = 'Resume';
+    startBtn.style.background = 'var(--teal)';
+    startBtn.style.borderColor = 'var(--teal)';
+    startBtn.style.color = '#04201a';
+
+    stateLabel.textContent = 'Paused';
+    stateLabel.className = 'state-label paused';
+    dialProgress.classList.add('paused');
+
+    lapBtn.disabled = true;
+  }
+
+  function reset(){
+    running = false;
+    cancelAnimationFrame(rafId);
+    elapsed = 0;
+    lastLapTime = 0;
+    laps = [];
+    render();
+
+    startIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
+    startLabel.textContent = 'Start';
+    startBtn.style.background = 'var(--teal)';
+    startBtn.style.borderColor = 'var(--teal)';
+    startBtn.style.color = '#04201a';
+
+    stateLabel.textContent = 'Ready';
+    stateLabel.className = 'state-label';
+    dialProgress.classList.remove('paused');
+
+    lapBtn.disabled = true;
+    resetBtn.disabled = true;
+    renderLaps();
+  }
+
+  function addLap(){
+    const lapTime = elapsed - lastLapTime;
+    lastLapTime = elapsed;
+    laps.push(lapTime);
+    renderLaps();
+  }
+
+  function renderLaps(){
+    lapCount.textContent = laps.length;
+    lapsList.innerHTML = '';
+    if(laps.length === 0){
+      lapsList.appendChild(emptyLaps);
+      return;
+    }
+    const fastest = Math.min(...laps);
+    const slowest = Math.max(...laps);
+    const maxLap = Math.max(...laps, 1);
+
+    laps.forEach((lapTime, i) => {
+      const row = document.createElement('div');
+      row.className = 'lap-row';
+      if(laps.length > 1 && lapTime === fastest) row.classList.add('fastest');
+      if(laps.length > 1 && lapTime === slowest) row.classList.add('slowest');
+
+      const pct = Math.max(6, Math.round((lapTime / maxLap) * 100));
+      row.innerHTML = `
+        <span class="lap-num">Lap ${i + 1}</span>
+        <span class="lap-bar-wrap"><span class="lap-bar" style="width:${pct}%"></span></span>
+        <span class="lap-time">${formatTime(lapTime)}.${pad(Math.floor(lapTime/10)%100,2)}</span>
+      `;
+      lapsList.appendChild(row);
+    });
+  }
+
+  startBtn.addEventListener('click', () => { running ? pause() : start(); });
+  lapBtn.addEventListener('click', addLap);
+  resetBtn.addEventListener('click', reset);
+
+  render();
+</script>
+</body>
+</html>
